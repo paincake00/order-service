@@ -13,6 +13,7 @@ type Config struct {
 
 type DBConfig struct {
 	addr        string
+	driver      string
 	maxOpenCons int
 	maxIdleCons int
 	maxIdleTime string
@@ -23,6 +24,7 @@ func LoadConfig() Config {
 		addr: env.GetString("ADDR", ":8080"),
 		db: DBConfig{
 			addr:        getUriDB(),
+			driver:      env.GetString("DB_DRIVER", "postgres"),
 			maxOpenCons: env.GetInt("DB_MAX_OPEN_CONS", 30),
 			maxIdleCons: env.GetInt("DB_MAX_IDLE_CONS", 30),
 			maxIdleTime: env.GetString("DB_MAX_IDLE_TIME", "15m"),
