@@ -1,22 +1,28 @@
 package main
 
 import (
-	"log"
-
 	"github.com/joho/godotenv"
 	"github.com/paincake00/order-service/internal/app"
+	"github.com/paincake00/order-service/internal/logs"
 )
 
 func main() {
+	logger := logs.NewLogger()
+	defer func() {
+		_ = logger.Sync()
+	}()
+
 	err := godotenv.Load()
 	if err != nil {
-		log.Fatal("Error loading .env file")
+		logger.Fatal("Error loading .env file")
 	}
 
-	application := app.New(app.LoadConfig())
+	config := app.LoadConfig()
+
+	application := app.New(config, logger)
 
 	err = application.Run()
 	if err != nil {
-		log.Fatal(err)
+		logger.Fatal(err)
 	}
 }
