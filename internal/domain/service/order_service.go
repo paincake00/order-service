@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/paincake00/order-service/internal/cache"
 	"github.com/paincake00/order-service/internal/db"
 	"github.com/paincake00/order-service/internal/domain/model"
+	"go.uber.org/zap"
 )
 
 type OrderService interface {
@@ -17,18 +17,20 @@ type OrderService interface {
 type OrderServiceImpl struct {
 	dbRepo    db.OrderDBRepository
 	cacheRepo *cache.LRUCache
+	logger    *zap.SugaredLogger
 }
 
-func NewOrderService(orderRepo db.OrderDBRepository, cacheRepo *cache.LRUCache) OrderService {
+func NewOrderService(orderRepo db.OrderDBRepository, cacheRepo *cache.LRUCache, logger *zap.SugaredLogger) OrderService {
 	return &OrderServiceImpl{
 		dbRepo:    orderRepo,
 		cacheRepo: cacheRepo,
+		logger:    logger,
 	}
 }
 
 func (s *OrderServiceImpl) GetOrderByID(ctx context.Context, orderUID string) (*model.OrderModel, error) {
 	if order, ok := s.cacheRepo.Get(orderUID); ok {
-		fmt.Println("C A C H E   IS   U S E D!")
+		s.logger.Infof("Cache used for uid: %s", orderUID)
 
 		return order, nil
 	}
@@ -54,7 +56,12 @@ func (s *OrderServiceImpl) RestoreCache(ctx context.Context) error {
 	}
 
 	for _, order := range orders {
-		s.cacheRepo.Put(order)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+			s.cacheRepo.Put(order)
+		}
 	}
 
 	return nil

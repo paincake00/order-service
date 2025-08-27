@@ -47,7 +47,7 @@ func New(config Config, logger *zap.SugaredLogger) *Application {
 
 	dbRepo := dbOrder.NewOrderRepository(db)
 	cacheRepo := cache.NewLRUCache(config.cache.capacity)
-	orderService := service.NewOrderService(dbRepo, cacheRepo)
+	orderService := service.NewOrderService(dbRepo, cacheRepo, logger)
 
 	app.orderService = orderService
 
@@ -65,9 +65,26 @@ func New(config Config, logger *zap.SugaredLogger) *Application {
 }
 
 func (app *Application) Run() error {
-	if err := app.orderService.RestoreCache(context.Background()); err != nil {
-		app.logger.Fatal(err)
-	}
+	// контекст для фоновых задач
+	ctx, cancelBg := context.WithCancel(context.Background())
+	defer cancelBg()
+
+	restoreErrCh := make(chan error, 1)
+
+	go func() {
+		if err := app.orderService.RestoreCache(ctx); err != nil {
+			restoreErrCh <- err
+		}
+		close(restoreErrCh)
+	}()
+
+	go func() {
+		if err := <-restoreErrCh; err != nil {
+			app.logger.Errorf("cache restore error: %v", err)
+		} else {
+			app.logger.Infof("cache restore finished successfully")
+		}
+	}()
 
 	srv := &http.Server{
 		Addr:         app.config.addr,
@@ -90,6 +107,8 @@ func (app *Application) Run() error {
 		defer cancel()
 
 		app.logger.Infof("Signal %s received, shutting down...", s)
+
+		cancelBg()
 
 		shutdown <- srv.Shutdown(ctx)
 	}()
