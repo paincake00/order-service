@@ -13,6 +13,7 @@ var ErrNotFound = errors.New("order not found")
 
 type OrderDBRepository interface {
 	GetByID(ctx context.Context, orderUID string) (*model.OrderModel, error)
+	GetNLast(ctx context.Context, n int) ([]*model.OrderModel, error)
 	//CreateOrder(ctx context.Context, order *model.OrderModel) error
 }
 
@@ -115,7 +116,9 @@ func (o *OrderDBRepositoryImpl) GetByID(ctx context.Context, orderUID string) (*
 	if err != nil {
 		return nil, fmt.Errorf("get items: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		_ = rows.Close()
+	}()
 
 	for rows.Next() {
 		var item model.ItemModel
@@ -142,4 +145,57 @@ func (o *OrderDBRepositoryImpl) GetByID(ctx context.Context, orderUID string) (*
 	}
 
 	return &order, nil
+}
+
+func (o *OrderDBRepositoryImpl) GetNLast(ctx context.Context, n int) ([]*model.OrderModel, error) {
+	tx, err := o.db.BeginTx(ctx, &sql.TxOptions{
+		ReadOnly: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("begin tx: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = tx.Rollback()
+		} else {
+			_ = tx.Commit()
+		}
+	}()
+
+	query := `
+		SELECT order_uid
+		FROM orders
+		ORDER BY date_created DESC
+		LIMIT $1
+	`
+
+	rows, err := tx.QueryContext(ctx, query, n)
+	if err != nil {
+		return nil, fmt.Errorf("get items: %w", err)
+	}
+	defer func() {
+		_ = rows.Close()
+	}()
+
+	var orderUIDs []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan uid: %w", err)
+		}
+		orderUIDs = append(orderUIDs, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("rows error: %w", err)
+	}
+
+	var orders []*model.OrderModel
+	for _, uid := range orderUIDs {
+		order, err := o.GetByID(ctx, uid)
+		if err != nil {
+			return nil, fmt.Errorf("get order error: %w", err)
+		}
+		orders = append(orders, order)
+	}
+	return orders, nil
 }

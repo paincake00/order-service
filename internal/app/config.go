@@ -7,8 +7,9 @@ import (
 )
 
 type Config struct {
-	addr string
-	db   DBConfig
+	addr  string
+	db    DBConfig
+	cache CacheConfig
 }
 
 type DBConfig struct {
@@ -17,6 +18,10 @@ type DBConfig struct {
 	maxOpenCons int
 	maxIdleCons int
 	maxIdleTime string
+}
+
+type CacheConfig struct {
+	capacity int
 }
 
 func LoadConfig() Config {
@@ -28,6 +33,9 @@ func LoadConfig() Config {
 			maxOpenCons: env.GetInt("DB_MAX_OPEN_CONS", 30),
 			maxIdleCons: env.GetInt("DB_MAX_IDLE_CONS", 30),
 			maxIdleTime: env.GetString("DB_MAX_IDLE_TIME", "15m"),
+		},
+		cache: CacheConfig{
+			capacity: env.GetInt("CACHE_MAX_CAPACITY", 10),
 		},
 	}
 

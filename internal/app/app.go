@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/paincake00/order-service/internal/cache"
 	dbOrder "github.com/paincake00/order-service/internal/db"
 	httpOrder "github.com/paincake00/order-service/internal/delivery/http"
 	"github.com/paincake00/order-service/internal/domain/service"
@@ -23,6 +24,7 @@ type Application struct {
 	router       http.Handler
 	db           *sql.DB
 	orderHandler *httpOrder.OrderHandler
+	orderService service.OrderService
 }
 
 func New(config Config, logger *zap.SugaredLogger) *Application {
@@ -44,7 +46,10 @@ func New(config Config, logger *zap.SugaredLogger) *Application {
 	app.db = db
 
 	dbRepo := dbOrder.NewOrderRepository(db)
-	orderService := service.NewOrderService(dbRepo)
+	cacheRepo := cache.NewLRUCache(config.cache.capacity)
+	orderService := service.NewOrderService(dbRepo, cacheRepo)
+
+	app.orderService = orderService
 
 	webErrorService := &errorsUtil.WebErrorService{Logger: logger}
 
@@ -60,6 +65,10 @@ func New(config Config, logger *zap.SugaredLogger) *Application {
 }
 
 func (app *Application) Run() error {
+	if err := app.orderService.RestoreCache(context.Background()); err != nil {
+		app.logger.Fatal(err)
+	}
+
 	srv := &http.Server{
 		Addr:         app.config.addr,
 		Handler:      app.router,
